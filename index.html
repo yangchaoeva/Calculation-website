@@ -30,16 +30,19 @@
         .header {
             background: linear-gradient(135deg, var(--dark-blue), var(--teal));
             color: var(--white);
-            padding: 20px;
+            /* 减少内边距 */
+            padding: 12px 20px; /* 原为20px */
             text-align: center;
             border-radius: 8px;
-            margin-bottom: 20px;
+            /* 减小底部外边距 */
+            margin-bottom: 12px; /* 原为20px */
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         
         .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
+            /* 缩小标题字号 */
+            font-size: 24px; /* 原为28px */
+            margin-bottom: 8px; /* 原为10px */
             text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
         }
         
@@ -186,6 +189,11 @@
                 display: none;
             }
             
+            /* 确保打印时完全隐藏表头 */
+            .header {
+                display: none;
+            }
+            
             body {
                 padding: 0;
                 margin: 0;
@@ -264,8 +272,7 @@
     </div>
     
     <div class="exercises-container" id="exercises-container">
-        <!-- 练习题将在这里动态生成 -->
-    </div>
+        </div>
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -284,66 +291,85 @@
                 
                 // 获取用户设置
                 const pageCount = Math.min(20, Math.max(1, parseInt(document.getElementById('page-count').value) || 3));
-                const borrowPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('borrow-percent').value) || 0));
-                const mixedPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('mixed-percent').value) || 0));
-                const basicPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('basic-percent').value) || 100));
+                let borrowPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('borrow-percent').value) || 0));
+                let mixedPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('mixed-percent').value) || 0));
+                let basicPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('basic-percent').value) || 0));
                 
                 // 计算总题数
                 const totalExercises = pageCount * 30;
                 
-                // 计算实际比例
-                const totalPercent = borrowPercent + mixedPercent + basicPercent;
-                const borrowRatio = totalPercent === 0 ? 0 : borrowPercent / totalPercent;
-                const mixedRatio = totalPercent === 0 ? 0 : mixedPercent / totalPercent;
-                const basicRatio = totalPercent === 0 ? 0 : basicPercent / totalPercent;
-                
-                // 精确计算题目数量
-                let borrowCount = Math.round(totalExercises * borrowRatio);
-                let mixedCount = Math.round(totalExercises * mixedRatio);
-                let basicCount = totalExercises - borrowCount - mixedCount;
-                
-                // 确保基础运算数量不为负
-                if (basicCount < 0) {
-                    basicCount = 0;
-                    // 重新调整其他两类题目数量
-                    const remaining = totalExercises;
-                    if (borrowRatio + mixedRatio > 0) {
-                        borrowCount = Math.round(remaining * (borrowRatio / (borrowRatio + mixedRatio)));
-                        mixedCount = remaining - borrowCount;
-                    }
+                // ------------------- [修正开始] 新的、更精确的题目数量分配算法 -------------------
+
+                let totalPercent = borrowPercent + mixedPercent + basicPercent;
+
+                // 处理所有比例都为0的极端情况，默认为100%基础运算
+                if (totalPercent === 0) {
+                    basicPercent = 100;
+                    totalPercent = 100;
                 }
+
+                // 标准化比例
+                const borrowRatio = borrowPercent / totalPercent;
+                const mixedRatio = mixedPercent / totalPercent;
+                const basicRatio = 1 - borrowRatio - mixedRatio; // 使用减法确保三者之和为1，避免浮点数误差
+
+                const types = [
+                    { name: 'borrow', ratio: borrowRatio },
+                    { name: 'mixed', ratio: mixedRatio },
+                    { name: 'basic', ratio: basicRatio }
+                ];
+
+                // 计算每种类型的精确期望数量和其整数部分
+                types.forEach(type => {
+                    type.exact = totalExercises * type.ratio;
+                    type.count = Math.floor(type.exact);
+                    type.remainder = type.exact - type.count; // 计算小数余数
+                });
+
+                // 计算因向下取整而未分配的题目总数
+                let distributedCount = types.reduce((sum, type) => sum + type.count, 0);
+                let remainderToDistribute = totalExercises - distributedCount;
+
+                // 按余数从大到小排序，余数大的优先获得剩余名额
+                types.sort((a, b) => b.remainder - a.remainder);
+
+                // 将剩余的题目逐一分配
+                for (let i = 0; i < remainderToDistribute; i++) {
+                    types[i].count++;
+                }
+                
+                // 获取最终分配结果
+                const borrowCount = types.find(t => t.name === 'borrow').count;
+                const mixedCount = types.find(t => t.name === 'mixed').count;
+                const basicCount = types.find(t => t.name === 'basic').count;
+
+                // ------------------- [修正结束] -------------------
                 
                 // 创建题目数组
                 let exercises = [];
                 
-                // 生成退位减法（仅当数量大于0时）
-                if (borrowCount > 0) {
-                    for (let i = 0; i < borrowCount; i++) {
-                        exercises.push({
-                            type: 'borrow',
-                            expression: generateBorrowAddition()
-                        });
-                    }
+                // 生成退位减法
+                for (let i = 0; i < borrowCount; i++) {
+                    exercises.push({
+                        type: 'borrow',
+                        expression: generateBorrowOperation()
+                    });
                 }
                 
-                // 生成混合运算（仅当数量大于0时）
-                if (mixedCount > 0) {
-                    for (let i = 0; i < mixedCount; i++) {
-                        exercises.push({
-                            type: 'mixed',
-                            expression: generateMixedOperation()
-                        });
-                    }
+                // 生成混合运算
+                for (let i = 0; i < mixedCount; i++) {
+                    exercises.push({
+                        type: 'mixed',
+                        expression: generateMixedOperation()
+                    });
                 }
                 
-                // 生成基础运算（仅当数量大于0时）
-                if (basicCount > 0) {
-                    for (let i = 0; i < basicCount; i++) {
-                        exercises.push({
-                            type: 'basic',
-                            expression: generateBasicOperation()
-                        });
-                    }
+                // 生成基础运算
+                for (let i = 0; i < basicCount; i++) {
+                    exercises.push({
+                        type: 'basic',
+                        expression: generateBasicOperation()
+                    });
                 }
                 
                 // 随机打乱题目顺序
@@ -352,32 +378,31 @@
                 // 分页显示题目（每页30题）
                 for (let page = 0; page < pageCount; page++) {
                     const pageExercises = exercises.slice(page * 30, (page + 1) * 30);
-                    renderPage(page + 1, pageExercises);
+                    renderPage(page + 1, pageExercises, page * 30);
                 }
                 
                 // 更新统计信息
                 updateStats(borrowCount, mixedCount, basicCount);
             }
             
-            function renderPage(pageNumber, exercises) {
+            function renderPage(pageNumber, exercises, baseIndex) {
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
                 
-                // 创建两列
                 const column1 = document.createElement('div');
                 column1.className = 'column';
                 
                 const column2 = document.createElement('div');
                 column2.className = 'column';
                 
-                // 将题目分配到两列
                 exercises.forEach((exercise, index) => {
                     const exerciseDiv = document.createElement('div');
                     exerciseDiv.className = `exercise ${exercise.type}`;
                     
                     const exerciseNumber = document.createElement('span');
                     exerciseNumber.className = 'exercise-number';
-                    exerciseNumber.textContent = `${index + 1}.`;
+                    // 修正全局编号
+                    exerciseNumber.textContent = `${baseIndex + index + 1}.`;
                     
                     const expression = document.createElement('span');
                     expression.textContent = exercise.expression;
@@ -385,15 +410,13 @@
                     exerciseDiv.appendChild(exerciseNumber);
                     exerciseDiv.appendChild(expression);
                     
-                    // 如果是混合运算，添加标签
                     if (exercise.type === 'mixed') {
                         const label = document.createElement('span');
                         label.className = 'mixed-label';
-                        label.textContent = '混合运算';
+                        label.textContent = '混合';
                         exerciseDiv.appendChild(label);
                     }
                     
-                    // 分配到列
                     if (index < 15) {
                         column1.appendChild(exerciseDiv);
                     } else {
@@ -404,7 +427,6 @@
                 pageDiv.appendChild(column1);
                 pageDiv.appendChild(column2);
                 
-                // 添加页码
                 const pageNumberDiv = document.createElement('div');
                 pageNumberDiv.className = 'page-number';
                 pageNumberDiv.textContent = `第 ${pageNumber} 页`;
@@ -425,14 +447,14 @@
             }
             
             // 生成退位减法（个位不够减）
-            function generateBorrowAddition() {
+            function generateBorrowOperation() { // Renamed from generateBorrowAddition
                 if (Math.random() < 0.6) {
                     // 两位数减两位数（60%概率）
                     let a, b;
                     do {
                         a = Math.floor(Math.random() * 90) + 10; // 10-99
                         b = Math.floor(Math.random() * (a - 10)) + 10; // 10到a-1
-                    } while (a % 10 >= b % 10); // 确保个位不够减
+                    } while (a % 10 >= b % 10 || b <= 0); // 确保个位不够减
                     return `${a} - ${b} = `;
                 } else {
                     // 两位数减一位数（40%概率）
@@ -447,49 +469,44 @@
             
             // 生成混合运算（加减组合）
             function generateMixedOperation() {
-                let a, b, c, result;
+                let a, b, c, result, op1, op2;
                 do {
-                    a = Math.floor(Math.random() * 50) + 10; // 10-59
-                    b = Math.floor(Math.random() * 30) + 10; // 10-39
-                    c = Math.floor(Math.random() * 20) + 1;  // 1-20
+                    a = Math.floor(Math.random() * 80) + 20; // 20-99
+                    b = Math.floor(Math.random() * 50) + 1;  // 1-50
+                    c = Math.floor(Math.random() * 50) + 1;  // 1-50
                     
-                    // 随机决定是加还是减
-                    if (Math.random() > 0.5) {
+                    // 随机决定运算顺序
+                    if (Math.random() > 0.5) { // a + b - c
+                        op1 = '+';
+                        op2 = '-';
                         result = a + b - c;
-                    } else {
+                    } else { // a - b + c
+                        op1 = '-';
+                        op2 = '+';
                         result = a - b + c;
                     }
-                } while (result <= 0 || result >= 100);
+                } while (result < 0 || result > 100 || a - b < 0); // 确保中间结果和最终结果都在0-100范围内
                 
-                return Math.random() > 0.5 
-                    ? `${a} + ${b} - ${c} = ` 
-                    : `${a} - ${b} + ${c} = `;
+                return `${a} ${op1} ${b} ${op2} ${c} = `;
             }
             
             // 生成基础运算（不进位加法或不退位减法）
             function generateBasicOperation() {
                 if (Math.random() > 0.5) {
-                    // 加法（确保不进位或结果不超过100）
+                    // 加法（不进位）
                     let a, b;
-                    if (Math.random() > 0.5) {
-                        // 不进位加法
-                        a = Math.floor(Math.random() * 90) + 10; // 10-99
-                        do {
-                            b = Math.floor(Math.random() * (99 - a)) + 1;
-                        } while ((a % 10) + (b % 10) >= 10);
-                    } else {
-                        // 简单加法（结果不超过100）
-                        a = Math.floor(Math.random() * 50) + 10; // 10-59
-                        b = Math.floor(Math.random() * (100 - a)) + 1;
-                    }
+                    do {
+                        a = Math.floor(Math.random() * 90) + 1; // 1-90
+                        b = Math.floor(Math.random() * (99 - a)) + 1; // 1 to 99-a
+                    } while ((a % 10) + (b % 10) >= 10 || a + b >= 100);
                     return `${a} + ${b} = `;
                 } else {
-                    // 减法（确保不退位）
+                    // 减法（不退位）
                     let a, b;
                     do {
                         a = Math.floor(Math.random() * 90) + 10; // 10-99
-                        b = Math.floor(Math.random() * (a - 1)) + 1;
-                    } while (a % 10 < b % 10);
+                        b = Math.floor(Math.random() * a) + 1;   // 1 to a
+                    } while (a % 10 < b % 10 || b === 0);
                     return `${a} - ${b} = `;
                 }
             }
