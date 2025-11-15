@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>100以内加减法练习题生成器</title>
+    <title>500以内计算题生成器</title>
     <style>
         :root {
             --blue: #3498db;
@@ -138,6 +138,25 @@
         .exercise.mixed {
             border-left-color: var(--red);
         }
+
+        .exercise.multiply {
+            border-left-color: #2ecc71;
+        }
+
+        .exercise.divide {
+            border-left-color: #f39c12;
+        }
+        
+        .type-label {
+            position: absolute;
+            top: -10px;
+            right: 10px;
+            background-color: #333;
+            color: var(--white);
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
         
         .mixed-label {
             position: absolute;
@@ -148,6 +167,10 @@
             font-size: 12px;
             padding: 2px 6px;
             border-radius: 10px;
+        }
+        .error-text {
+            color: var(--red);
+            font-size: 14px;
         }
         
         .exercise-number {
@@ -177,6 +200,33 @@
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
+        }
+        .answers-page {
+            background-color: var(--white);
+        }
+        .answers-page.consolidated {
+            padding-top: 20px;
+        }
+        .answers-grid {
+            display: grid;
+            gap: 8px;
+        }
+        .answers-group-title {
+            font-weight: bold;
+            margin: 8px 0 6px;
+            color: #333;
+        }
+        .answer-item {
+            padding: 4px 6px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .answer-number {
+            font-weight: bold;
+            margin-right: 6px;
+            color: var(--blue);
         }
         
         @media print {
@@ -219,7 +269,7 @@
                 box-shadow: none;
             }
             
-            .mixed-label {
+            .mixed-label, .type-label {
                 display: none;
             }
         }
@@ -227,7 +277,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>100以内加减法练习题生成器</h1>
+        <h1>500以内计算题生成器</h1>
         <p>适用于小学低年级数学练习</p>
     </div>
     
@@ -246,7 +296,39 @@
         </div>
         <div class="control-group">
             <label for="basic-percent">基础运算比例 (%)</label>
-            <input type="number" id="basic-percent" min="0" max="100" value="50">
+            <input type="number" id="basic-percent" min="0" max="100" value="30">
+        </div>
+        <div class="control-group">
+            <label for="multiply-percent">乘法比例 (%)</label>
+            <input type="number" id="multiply-percent" min="0" max="100" value="10">
+        </div>
+        <div class="control-group">
+            <label for="divide-percent">除法比例 (%)</label>
+            <input type="number" id="divide-percent" min="0" max="100" value="10">
+        </div>
+        <div class="control-group">
+            <label for="multiply-mode">乘法结果模式</label>
+            <select id="multiply-mode" aria-label="乘法结果模式选择">
+                <option value="table" selected>表内（1–9）</option>
+                <option value="high">81–500</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="divide-mode">除法结果模式</label>
+            <select id="divide-mode" aria-label="除法结果模式选择">
+                <option value="table" selected>表内（商1–9）</option>
+                <option value="high">81–500（商）</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="result-max">最终结果范围 (0-500)：<span id="result-max-value">100</span></label>
+            <input type="range" id="result-max" min="0" max="500" step="1" value="100" aria-label="最终结果范围滑动选择">
+        </div>
+        <p id="percent-error" class="error-text"></p>
+        <p id="range-error" class="error-text"></p>
+        <div class="control-group">
+            <label for="show-answers">生成答案页</label>
+            <input type="checkbox" id="show-answers" checked>
         </div>
         <button id="generate-btn">生成练习题</button>
         <button id="print-btn">打印练习题</button>
@@ -269,6 +351,14 @@
             <h3>基础运算</h3>
             <p id="basic-count">0</p>
         </div>
+        <div class="stat-card">
+            <h3>乘法</h3>
+            <p id="multiply-count">0</p>
+        </div>
+        <div class="stat-card">
+            <h3>除法</h3>
+            <p id="divide-count">0</p>
+        </div>
     </div>
     
     <div class="exercises-container" id="exercises-container">
@@ -279,11 +369,52 @@
             const generateBtn = document.getElementById('generate-btn');
             const printBtn = document.getElementById('print-btn');
             const exercisesContainer = document.getElementById('exercises-container');
-            
-            generateBtn.addEventListener('click', generateExercises);
+            const resultMaxInput = document.getElementById('result-max');
+            const resultMaxValueEl = document.getElementById('result-max-value');
+            const updateResultMaxValue = () => { if (resultMaxValueEl && resultMaxInput) { resultMaxValueEl.textContent = resultMaxInput.value; } };
+            const STORAGE_KEY = 'calc_config_v1';
+            const getCurrentConfig = () => ({
+                pageCount: document.getElementById('page-count').value,
+                borrowPercent: document.getElementById('borrow-percent').value,
+                mixedPercent: document.getElementById('mixed-percent').value,
+                basicPercent: document.getElementById('basic-percent').value,
+                multiplyPercent: document.getElementById('multiply-percent').value,
+                dividePercent: document.getElementById('divide-percent').value,
+                multiplyMode: document.getElementById('multiply-mode').value,
+                divideMode: document.getElementById('divide-mode').value,
+                resultMax: document.getElementById('result-max').value,
+                showAnswers: document.getElementById('show-answers').checked ? '1' : '0',
+            });
+            const saveConfig = (config) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch (e) {} };
+            const loadConfig = () => {
+                try {
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if (!raw) return;
+                    const cfg = JSON.parse(raw);
+                    const apply = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined && val !== null) { if (el.type === 'checkbox') { el.checked = (val === '1' || val === true); } else { el.value = String(val); } } };
+                    apply('page-count', cfg.pageCount);
+                    apply('borrow-percent', cfg.borrowPercent);
+                    apply('mixed-percent', cfg.mixedPercent);
+                    apply('basic-percent', cfg.basicPercent);
+                    apply('multiply-percent', cfg.multiplyPercent);
+                    apply('divide-percent', cfg.dividePercent);
+                    apply('multiply-mode', cfg.multiplyMode);
+                    apply('divide-mode', cfg.divideMode);
+                    apply('result-max', cfg.resultMax);
+                    apply('show-answers', cfg.showAnswers);
+                } catch (e) {}
+            };
+            loadConfig();
+            updateResultMaxValue();
+            resultMaxInput.addEventListener('input', updateResultMaxValue);
+            ['page-count','borrow-percent','mixed-percent','basic-percent','multiply-percent','divide-percent','multiply-mode','divide-mode','result-max','show-answers'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', () => saveConfig(getCurrentConfig()));
+                }
+            });
+            generateBtn.addEventListener('click', () => { saveConfig(getCurrentConfig()); generateExercises(); });
             printBtn.addEventListener('click', printExercises);
-            
-            // 初始生成一次练习题
             generateExercises();
             
             function generateExercises() {
@@ -294,29 +425,50 @@
                 let borrowPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('borrow-percent').value) || 0));
                 let mixedPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('mixed-percent').value) || 0));
                 let basicPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('basic-percent').value) || 0));
+                let multiplyPercent = Math.min(100, Math.max(0, parseInt(document.getElementById('multiply-percent').value) || 0));
+                let dividePercent = Math.min(100, Math.max(0, parseInt(document.getElementById('divide-percent').value) || 0));
+                const resultMax = Math.min(500, Math.max(1, parseInt(document.getElementById('result-max').value) || 100));
+                const showAnswers = !!(document.getElementById('show-answers')?.checked);
                 
                 // 计算总题数
                 const totalExercises = pageCount * 30;
-                
-                // ------------------- [修正开始] 新的、更精确的题目数量分配算法 -------------------
-
-                let totalPercent = borrowPercent + mixedPercent + basicPercent;
-
-                // 处理所有比例都为0的极端情况，默认为100%基础运算
-                if (totalPercent === 0) {
-                    basicPercent = 100;
-                    totalPercent = 100;
+                const sumPercent = borrowPercent + mixedPercent + basicPercent + multiplyPercent + dividePercent;
+                const percentErrorEl = document.getElementById('percent-error');
+                if (sumPercent !== 100) {
+                    percentErrorEl.textContent = `比例合计需等于100%，当前为${sumPercent}%`;
+                    return;
+                } else {
+                    percentErrorEl.textContent = '';
                 }
-
-                // 标准化比例
-                const borrowRatio = borrowPercent / totalPercent;
-                const mixedRatio = mixedPercent / totalPercent;
-                const basicRatio = 1 - borrowRatio - mixedRatio; // 使用减法确保三者之和为1，避免浮点数误差
-
+                const rangeErrorEl = document.getElementById('range-error');
+                const multiplyMode = (document.getElementById('multiply-mode')?.value || 'table');
+                const divideMode = (document.getElementById('divide-mode')?.value || 'table');
+                if (resultMax < 10 && borrowPercent > 0) {
+                    rangeErrorEl.textContent = '退位减法需要“最终结果范围”至少为10';
+                    return;
+                }
+                if (multiplyMode === 'high' && resultMax < 81) {
+                    rangeErrorEl.textContent = '乘法选择“81–500”时，最终结果范围需至少为81';
+                    return;
+                }
+                if (divideMode === 'high' && resultMax < 81) {
+                    rangeErrorEl.textContent = '除法选择“81–500（商）”时，最终结果范围需至少为81';
+                    return;
+                }
+                rangeErrorEl.textContent = '';
+                
+                const borrowRatio = borrowPercent / 100;
+                const mixedRatio = mixedPercent / 100;
+                const multiplyRatio = multiplyPercent / 100;
+                const divideRatio = dividePercent / 100;
+                const basicRatio = basicPercent / 100;
+                
                 const types = [
                     { name: 'borrow', ratio: borrowRatio },
                     { name: 'mixed', ratio: mixedRatio },
-                    { name: 'basic', ratio: basicRatio }
+                    { name: 'basic', ratio: basicRatio },
+                    { name: 'multiply', ratio: multiplyRatio },
+                    { name: 'divide', ratio: divideRatio }
                 ];
 
                 // 计算每种类型的精确期望数量和其整数部分
@@ -342,7 +494,9 @@
                 const borrowCount = types.find(t => t.name === 'borrow').count;
                 const mixedCount = types.find(t => t.name === 'mixed').count;
                 const basicCount = types.find(t => t.name === 'basic').count;
-
+                const multiplyCount = types.find(t => t.name === 'multiply').count;
+                const divideCount = types.find(t => t.name === 'divide').count;
+                
                 // ------------------- [修正结束] -------------------
                 
                 // 创建题目数组
@@ -352,7 +506,7 @@
                 for (let i = 0; i < borrowCount; i++) {
                     exercises.push({
                         type: 'borrow',
-                        expression: generateBorrowOperation()
+                        expression: generateBorrowOperation(resultMax)
                     });
                 }
                 
@@ -360,7 +514,7 @@
                 for (let i = 0; i < mixedCount; i++) {
                     exercises.push({
                         type: 'mixed',
-                        expression: generateMixedOperation()
+                        expression: generateMixedOperation(resultMax)
                     });
                 }
                 
@@ -368,21 +522,64 @@
                 for (let i = 0; i < basicCount; i++) {
                     exercises.push({
                         type: 'basic',
-                        expression: generateBasicOperation()
+                        expression: generateBasicOperation(resultMax)
+                    });
+                }
+
+                // 生成乘法
+                for (let i = 0; i < multiplyCount; i++) {
+                    exercises.push({
+                        type: 'multiply',
+                        expression: generateMultiplicationOperation(resultMax, multiplyMode)
+                    });
+                }
+
+                // 生成除法
+                for (let i = 0; i < divideCount; i++) {
+                    exercises.push({
+                        type: 'divide',
+                        expression: generateDivisionOperation(resultMax, divideMode)
                     });
                 }
                 
                 // 随机打乱题目顺序
                 exercises = shuffleArray(exercises);
-                
-                // 分页显示题目（每页30题）
+                const allPages = [];
                 for (let page = 0; page < pageCount; page++) {
                     const pageExercises = exercises.slice(page * 30, (page + 1) * 30);
+                    const seen = new Set();
+                    for (let i = 0; i < pageExercises.length; i++) {
+                        if (seen.has(pageExercises[i].expression)) {
+                            let attempts = 0;
+                            do {
+                                const t = pageExercises[i].type;
+                                let expr = t === 'borrow'
+                                    ? generateBorrowOperation(resultMax)
+                                    : t === 'mixed'
+                                    ? generateMixedOperation(resultMax)
+                                    : t === 'basic'
+                                    ? generateBasicOperation(resultMax)
+                                    : t === 'multiply'
+                                    ? generateMultiplicationOperation(resultMax, multiplyMode)
+                                    : generateDivisionOperation(resultMax, divideMode);
+                                if (!seen.has(expr)) {
+                                    pageExercises[i].expression = expr;
+                                    break;
+                                }
+                                attempts++;
+                            } while (attempts < 50);
+                        }
+                        seen.add(pageExercises[i].expression);
+                    }
                     renderPage(page + 1, pageExercises, page * 30);
+                    allPages.push(pageExercises);
+                }
+                if (showAnswers) {
+                    renderConsolidatedAnswers(allPages);
                 }
                 
                 // 更新统计信息
-                updateStats(borrowCount, mixedCount, basicCount);
+                updateStats(borrowCount, mixedCount, basicCount, multiplyCount, divideCount);
             }
             
             function renderPage(pageNumber, exercises, baseIndex) {
@@ -410,10 +607,19 @@
                     exerciseDiv.appendChild(exerciseNumber);
                     exerciseDiv.appendChild(expression);
                     
-                    if (exercise.type === 'mixed') {
+                    const labelTypes = ['mixed', 'multiply', 'divide', 'borrow', 'basic'];
+                    if (labelTypes.includes(exercise.type)) {
                         const label = document.createElement('span');
-                        label.className = 'mixed-label';
-                        label.textContent = '混合';
+                        label.className = 'type-label';
+                        label.textContent = exercise.type === 'mixed'
+                            ? '混合'
+                            : exercise.type === 'multiply'
+                            ? '乘法'
+                            : exercise.type === 'divide'
+                            ? '除法'
+                            : exercise.type === 'borrow'
+                            ? '退位'
+                            : '基础';
                         exerciseDiv.appendChild(label);
                     }
                     
@@ -435,11 +641,83 @@
                 exercisesContainer.appendChild(pageDiv);
             }
             
-            function updateStats(borrowCount, mixedCount, basicCount) {
-                document.getElementById('total-count').textContent = borrowCount + mixedCount + basicCount;
+            function computeAnswer(expression) {
+                const expr = expression.replace(/\s/g, '').replace(/=$/, '');
+                const ops = expr.match(/([+\-×÷])/g) || [];
+                const nums = expr.split(/[+\-×÷]/).map(n => parseInt(n, 10));
+                const apply = (a, op, b) => op === '+' ? a + b : op === '-' ? a - b : op === '×' ? a * b : Math.floor(a / b);
+                if (nums.length === 2 && ops.length === 1) return apply(nums[0], ops[0], nums[1]);
+                if (nums.length === 3 && ops.length === 2) return apply(apply(nums[0], ops[0], nums[1]), ops[1], nums[2]);
+                return '';
+            }
+            
+            function renderAnswersPage(pageNumber, exercises, baseIndex) {
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'page answers-page';
+                const grid = document.createElement('div');
+                grid.className = 'answers-grid';
+                exercises.forEach((exercise, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'answer-item';
+                    const num = document.createElement('span');
+                    num.className = 'answer-number';
+                    num.textContent = `${baseIndex + index + 1}.`;
+                    const ans = document.createElement('span');
+                    ans.className = 'answer-text';
+                    ans.textContent = computeAnswer(exercise.expression);
+                    item.appendChild(num);
+                    item.appendChild(ans);
+                    grid.appendChild(item);
+                });
+                pageDiv.appendChild(grid);
+                const pageNumberDiv = document.createElement('div');
+                pageNumberDiv.className = 'page-number';
+                pageNumberDiv.textContent = `第 ${pageNumber} 页 答案`;
+                pageDiv.appendChild(pageNumberDiv);
+                exercisesContainer.appendChild(pageDiv);
+            }
+
+            function renderConsolidatedAnswers(pages) {
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'page answers-page consolidated';
+                for (let p = 0; p < pages.length; p++) {
+                    const title = document.createElement('div');
+                    title.className = 'answers-group-title';
+                    title.textContent = `第 ${p + 1} 页 答案`;
+                    pageDiv.appendChild(title);
+                    const grid = document.createElement('div');
+                    grid.className = 'answers-grid';
+                    grid.style.gridTemplateColumns = 'repeat(6, 1fr)';
+                    const pageExercises = pages[p];
+                    for (let i = 0; i < pageExercises.length; i++) {
+                        const item = document.createElement('div');
+                        item.className = 'answer-item';
+                        const num = document.createElement('span');
+                        num.className = 'answer-number';
+                        num.textContent = `${p * 30 + i + 1}.`;
+                        const ans = document.createElement('span');
+                        ans.className = 'answer-text';
+                        ans.textContent = computeAnswer(pageExercises[i].expression);
+                        item.appendChild(num);
+                        item.appendChild(ans);
+                        grid.appendChild(item);
+                    }
+                    pageDiv.appendChild(grid);
+                }
+                const pageNumberDiv = document.createElement('div');
+                pageNumberDiv.className = 'page-number';
+                pageNumberDiv.textContent = '答案总览';
+                pageDiv.appendChild(pageNumberDiv);
+                exercisesContainer.appendChild(pageDiv);
+            }
+            
+            function updateStats(borrowCount, mixedCount, basicCount, multiplyCount, divideCount) {
+                document.getElementById('total-count').textContent = borrowCount + mixedCount + basicCount + multiplyCount + divideCount;
                 document.getElementById('borrow-count').textContent = borrowCount;
                 document.getElementById('mixed-count').textContent = mixedCount;
                 document.getElementById('basic-count').textContent = basicCount;
+                document.getElementById('multiply-count').textContent = multiplyCount;
+                document.getElementById('divide-count').textContent = divideCount;
             }
             
             function printExercises() {
@@ -447,68 +725,118 @@
             }
             
             // 生成退位减法（个位不够减）
-            function generateBorrowOperation() { // Renamed from generateBorrowAddition
+            function generateBorrowOperation(resultMax) {
+                let a, b;
+                const maxA = Math.max(10, Math.min(resultMax, 500));
                 if (Math.random() < 0.6) {
-                    // 两位数减两位数（60%概率）
-                    let a, b;
+                    let attempts = 0;
                     do {
-                        a = Math.floor(Math.random() * 90) + 10; // 10-99
-                        b = Math.floor(Math.random() * (a - 10)) + 10; // 10到a-1
-                    } while (a % 10 >= b % 10 || b <= 0); // 确保个位不够减
+                        a = Math.floor(Math.random() * (maxA - 9)) + 10;
+                        b = Math.floor(Math.random() * (Math.max(10, a) - 9)) + 10;
+                        attempts++;
+                        if (attempts > 1000) break;
+                    } while (a % 10 >= b % 10 || b <= 0 || a - b < 0 || a - b > resultMax);
                     return `${a} - ${b} = `;
                 } else {
-                    // 两位数减一位数（40%概率）
-                    let a, b;
+                    let attempts = 0;
                     do {
-                        a = Math.floor(Math.random() * 90) + 10; // 10-99
-                        b = Math.floor(Math.random() * 9) + 1;    // 1-9
-                    } while (a % 10 >= b); // 确保个位不够减
+                        a = Math.floor(Math.random() * (maxA - 9)) + 10;
+                        b = Math.floor(Math.random() * 9) + 1;
+                        attempts++;
+                        if (attempts > 1000) break;
+                    } while (a % 10 >= b || a - b < 0 || a - b > resultMax);
                     return `${a} - ${b} = `;
                 }
             }
             
             // 生成混合运算（加减组合）
-            function generateMixedOperation() {
-                let a, b, c, result, op1, op2;
+            function generateMixedOperation(resultMax) {
+                let a, b, c, result, op1, op2, mid;
+                let attempts = 0;
                 do {
-                    a = Math.floor(Math.random() * 80) + 20; // 20-99
-                    b = Math.floor(Math.random() * 50) + 1;  // 1-50
-                    c = Math.floor(Math.random() * 50) + 1;  // 1-50
-                    
-                    // 随机决定运算顺序
-                    if (Math.random() > 0.5) { // a + b - c
+                    a = Math.floor(Math.random() * Math.max(1, Math.min(resultMax, 500))) + 1;
+                    b = Math.floor(Math.random() * Math.max(1, Math.min(resultMax, 500))) + 1;
+                    c = Math.floor(Math.random() * Math.max(1, Math.min(resultMax, 500))) + 1;
+                    if (Math.random() > 0.5) {
                         op1 = '+';
                         op2 = '-';
-                        result = a + b - c;
-                    } else { // a - b + c
+                        mid = a + b;
+                        result = mid - c;
+                    } else {
                         op1 = '-';
                         op2 = '+';
-                        result = a - b + c;
+                        mid = a - b;
+                        result = mid + c;
                     }
-                } while (result < 0 || result > 100 || a - b < 0); // 确保中间结果和最终结果都在0-100范围内
-                
+                    attempts++;
+                    if (attempts > 2000) break;
+                } while (mid < 0 || mid >= resultMax || result < 0 || result > resultMax);
                 return `${a} ${op1} ${b} ${op2} ${c} = `;
             }
             
             // 生成基础运算（不进位加法或不退位减法）
-            function generateBasicOperation() {
+            function generateBasicOperation(resultMax) {
                 if (Math.random() > 0.5) {
-                    // 加法（不进位）
                     let a, b;
+                    let attempts = 0;
                     do {
-                        a = Math.floor(Math.random() * 90) + 1; // 1-90
-                        b = Math.floor(Math.random() * (99 - a)) + 1; // 1 to 99-a
-                    } while ((a % 10) + (b % 10) >= 10 || a + b >= 100);
+                        a = Math.floor(Math.random() * Math.max(1, resultMax)) + 1;
+                        b = Math.floor(Math.random() * Math.max(1, Math.max(1, resultMax - a))) + 1;
+                        attempts++;
+                        if (attempts > 1000) break;
+                    } while ((a % 10) + (b % 10) >= 10 || a + b > resultMax);
                     return `${a} + ${b} = `;
                 } else {
-                    // 减法（不退位）
                     let a, b;
+                    let attempts = 0;
                     do {
-                        a = Math.floor(Math.random() * 90) + 10; // 10-99
-                        b = Math.floor(Math.random() * a) + 1;   // 1 to a
-                    } while (a % 10 < b % 10 || b === 0);
+                        a = Math.floor(Math.random() * Math.max(1, resultMax)) + 1;
+                        b = Math.floor(Math.random() * a) + 1;
+                        attempts++;
+                        if (attempts > 1000) break;
+                    } while (a % 10 < b % 10 || b === 0 || a - b > resultMax);
                     return `${a} - ${b} = `;
                 }
+            }
+            
+            function generateMultiplicationOperation(resultMax, mode) {
+                if (mode === 'table') {
+                    const a = Math.floor(Math.random() * 9) + 1;
+                    const b = Math.floor(Math.random() * 9) + 1;
+                    return `${a} × ${b} = `;
+                }
+                let a, b, product, attempts = 0;
+                do {
+                    a = Math.floor(Math.random() * Math.max(10, Math.min(resultMax, 500))) + 1;
+                    if (a < 10) a = 10;
+                    const minB = Math.max(10, Math.ceil(81 / a));
+                    const maxB = Math.max(minB, Math.floor(resultMax / a));
+                    b = Math.floor(Math.random() * (maxB - minB + 1)) + minB;
+                    product = a * b;
+                    attempts++;
+                    if (attempts > 2000) break;
+                } while (product < 81 || product > resultMax);
+                return `${a} × ${b} = `;
+            }
+            
+            function generateDivisionOperation(resultMax, mode) {
+                if (mode === 'table') {
+                    const a = Math.floor(Math.random() * 9) + 1;
+                    const b = Math.floor(Math.random() * 9) + 1;
+                    const dividend = a * b;
+                    const useA = Math.random() > 0.5;
+                    const divisor = useA ? a : b;
+                    return `${dividend} ÷ ${divisor} = `;
+                }
+                let q, d, dividend, attempts = 0;
+                do {
+                    q = Math.floor(Math.random() * (resultMax - 81 + 1)) + 81;
+                    d = Math.floor(Math.random() * 8) + 2;
+                    dividend = q * d;
+                    attempts++;
+                    if (attempts > 2000) break;
+                } while (q < 81 || q > resultMax);
+                return `${dividend} ÷ ${d} = `;
             }
             
             // 随机打乱数组
