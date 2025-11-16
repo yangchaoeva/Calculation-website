@@ -168,6 +168,9 @@
             padding: 2px 6px;
             border-radius: 10px;
         }
+        .exporting .type-label, .exporting .mixed-label {
+            display: none !important;
+        }
         .error-text {
             color: var(--red);
             font-size: 14px;
@@ -746,7 +749,15 @@
                     html2canvas: { scale: 2 },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
-                lib().set(opt).from(el).save();
+                document.body.classList.add('exporting');
+                const task = lib().set(opt).from(el).save();
+                if (task && typeof task.finally === 'function') {
+                    task.finally(() => { document.body.classList.remove('exporting'); });
+                } else if (task && typeof task.then === 'function') {
+                    task.then(() => { document.body.classList.remove('exporting'); }).catch(() => { document.body.classList.remove('exporting'); });
+                } else {
+                    document.body.classList.remove('exporting');
+                }
             }
             
             // 生成退位减法（个位不够减）
