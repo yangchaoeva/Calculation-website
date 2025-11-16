@@ -332,6 +332,7 @@
         </div>
         <button id="generate-btn">生成练习题</button>
         <button id="print-btn">打印练习题</button>
+        <button id="download-pdf-btn">下载PDF</button>
     </div>
     
     <div class="stats no-print">
@@ -364,10 +365,12 @@
     <div class="exercises-container" id="exercises-container">
         </div>
     
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const generateBtn = document.getElementById('generate-btn');
             const printBtn = document.getElementById('print-btn');
+            const downloadPdfBtn = document.getElementById('download-pdf-btn');
             const exercisesContainer = document.getElementById('exercises-container');
             const resultMaxInput = document.getElementById('result-max');
             const resultMaxValueEl = document.getElementById('result-max-value');
@@ -414,6 +417,7 @@
                 }
             });
             generateBtn.addEventListener('click', () => { saveConfig(getCurrentConfig()); generateExercises(); });
+            if (downloadPdfBtn) { downloadPdfBtn.addEventListener('click', downloadPdf); }
             printBtn.addEventListener('click', printExercises);
             generateExercises();
             
@@ -721,7 +725,28 @@
             }
             
             function printExercises() {
-                window.print();
+                try {
+                    if (typeof window.print === 'function') {
+                        window.print();
+                        return;
+                    }
+                } catch (e) {}
+                alert('当前浏览器不支持直接打印，请使用“下载PDF”或浏览器菜单的打印功能');
+            }
+            
+            function downloadPdf() {
+                const lib = window.html2pdf;
+                if (!lib) { alert('PDF生成库未加载，请稍后重试或使用浏览器打印'); return; }
+                const el = document.querySelector('.exercises-container');
+                if (!el) return;
+                const opt = {
+                    margin: 10,
+                    filename: '练习题.pdf',
+                    image: { type: 'jpeg', quality: 0.95 },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                lib().set(opt).from(el).save();
             }
             
             // 生成退位减法（个位不够减）
